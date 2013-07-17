@@ -3,12 +3,13 @@
  * Module dependencies.
  */
 require('./lib/extendJS'); 
-var log = require('./logging').newLogger(module.id)
-  , config = requre('./lib/config')
+var log = require('./lib/logging').newLogger(module.id)
+  , config = require('./lib/config')
   , express = require('express')
   , routes = require('./routes')
   , ptools = require('./lib/processTools')
   , dataStore = require('./lib/redisDatastore')
+  , security = require('./lib/security')
   , util = require('util')
   , http = require('http')
   , path = require('path')
@@ -18,8 +19,6 @@ var log = require('./logging').newLogger(module.id)
 var app = express();
 
 log.warn("System starting...");
-config.serviceVersion = exports.version = JSON.parse(require('fs').readFileSync('./package.json')).version;
-log.warn(config.getService);
 
 app.configure(function(){
   app.set('views', __dirname + '/views');
@@ -57,24 +56,27 @@ var checkStart = function(){
 			return true;
 		});
 		
-		dataStore.loadConfig(function(err, status){
+		dataStore.configLoad(function(err, status){
 			if(!err & status){
 				log.warn("Config loaded OK");
 			} else {
 				log.error("Config NOT loaded - could be first execution: "+util.inspect(err, {colors: true, showHidden: true, maxDepth: 5}));
 			}
-			
+			log.info("Starting server " + config.instanceData.serverPort  + ' - environment: ' + app.get('env'));
 			http.createServer(app).listen(config.instanceData.serverPort, function () {
+				security.downgradeExecution(config.instanceData.user,config.instanceData.group);
 				http.globalAgent.maxSockets = config.data.maxHttpSockets;
 				log.warn(config.getVersion());
-				log.warn("listening on port " + config.instanceData.serverPort  + ' - environment: ' + app.get('env'));
-				log.info("Saving Config...");
-				dataStore.saveConfig(function(err, status){
-					if(!err & status){
-						log.info("Config saved OK");
-					} else {
+				log.warn("Server listening on port " + config.instanceData.serverPort  + ' - environment: ' + app.get('env'));
+				log.warn("This servers identifier: "+config.getServerId());
+				log.info("Saving current config...");
+				dataStore.configSave(function(err, status){
+					if(err || !status){
 						log.error("Config NOT saved - something is broken: "+util.inspect(err, {colors: true, showHidden: true, maxDepth: 5}));
+					} else {
+						log.info("Config saved OK");
 					}
+					log.info("SERVICE RUNNING...");
 				});
 			});			
 		});
